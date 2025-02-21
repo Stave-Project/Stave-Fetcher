@@ -1,86 +1,107 @@
-# Stave Fetcher Setup Guide
+# Stave Fetcher - Setup Guide
 
-## 📌 Overview
-This guide will walk you through setting up and running the **Stave Fetcher** project. Follow the steps carefully to ensure everything works smoothly.
-
----
-
-## 🛠 Prerequisites
-- A **Google Cloud Console** account
-- Access to the **Independent Stave Company Data Collection (Responses)** Google Sheet
-- Python 3 installed on your system
-- Git installed on your system
+This guide will help you set up the **Stave Fetcher** tool step by step.
 
 ---
 
-## 🚀 Setup Instructions
+## **1. Clone the Repository**
+Download the repository to your local machine:
 
-### **1️⃣ Clone the Repository**
 ```sh
-# Clone the repo to your local machine
-git clone <your-repository-url>
+git clone <your-repo-url>
 cd Stave-Fetcher
 ```
 
-### **2️⃣ Make a Copy of the Data Sheet**
-1. Open **Google Sheets** and locate the file named **"Independent Stave Company Data Collection (Responses)"**.
-2. Click on **File > Make a Copy**.
-3. Rename the copy to anything you prefer.
+---
 
-### **3️⃣ Set Up Google Cloud Console**
-1. Go to [Google Cloud Console](https://console.cloud.google.com/).
-2. **Create a New Project**:
-   - Name it **Stave Project**.
-3. **Enable APIs**:
-   - Navigate to **APIs & Services** > **Credentials**.
-   - Click **Create Credentials** > **Service Account**.
-   - Name it **Stave Fetcher** and add a description.
-   - Set the **Role** to **Editor**.
-4. **Download the API Key**:
-   - Click on the service account you just created.
+## **2. Setup Google Sheets for Data Collection**
+1. Open the Google Sheet named **"Independent Stave Company Data Collection (Responses)"**.
+2. **Make a copy**:  
+   - Click **File > Make a Copy**.
+   - Rename the copy (e.g., **"My Stave Data Copy"**).
+
+---
+
+## **3. Set Up Google Cloud Console**
+1. Go to **[Google Cloud Console](https://console.cloud.google.com/)** and sign in.
+2. Click **Select a Project** (top-left) > **New Project**.
+3. Name the project **Stave Project** and click **Create**.
+
+---
+
+## **4. Enable Google Sheets API**
+1. In Google Cloud Console, navigate to **`APIs & Services > Library`**.
+2. Search for **Google Sheets API** and enable it.
+
+---
+
+## **5. Create and Download API Credentials**
+1. Go to **`APIs & Services > Credentials`**.
+2. Click **Create Credentials > Service Account**.
+3. Set:
+   - **Name:** `Stave Fetcher`
+   - **Description:** `API for fetching stave data`
+4. Under **Role**, select **Editor**.
+5. Click **Create & Continue > Done**.
+6. In the **Service Accounts** tab:
+   - Click on your new service account.
    - Go to the **Keys** tab.
-   - Click **Add Key > JSON**.
-   - Download the JSON file.
-   - Rename it to **credentials.json**.
-   - Move it to the **Stave-Fetcher** folder.
+   - Click **Add Key > Create New Key**.
+   - Select **JSON format** and download it.
+7. Rename the downloaded file to **`credentials.json`**.
+8. Move `credentials.json` into the **Stave-Fetcher** folder.
 
-### **4️⃣ Grant Access to Google Sheets**
-1. Open the **credentials.json** file.
-2. Copy the **client_email** field.
-3. Open the **Google Sheet copy** you made.
-4. Click **Share** and **paste the client email**.
-5. Set the permission to **Editor**.
+---
 
-### **5️⃣ Update `stave-fetcher.py`**
-1. Open the file `stave-fetcher.py`.
-2. Find where the Google Sheet is referenced.
-3. Replace it with the name of the **copy** of the sheet you created.
+## **6. Grant API Access to Google Sheets**
+1. Open `credentials.json`.
+2. Find the **"client_email"** field.
+3. Open your **Google Sheet copy**.
+4. Click **Share** and paste the **client email**.
+5. Set **Editor** access and save.
 
-### **6️⃣ Set Up Virtual Environment**
+---
+
+## **7. Update the Stave Fetcher Script**
+1. Open `stave-fetcher.py`.
+2. Find the **Google Sheet name**.
+3. **Replace it** with the name of your **Google Sheet copy**.
+
+---
+
+## **8. Set Up Virtual Environment and Install Dependencies**
+1. Ensure Python 3 is installed.
+2. Run:
+
 ```sh
-# Create and activate a virtual environment
 python3 -m venv venv
-source venv/bin/activate   # On macOS/Linux
-venv\Scripts\activate     # On Windows
+source venv/bin/activate  # macOS/Linux
+venv\Scripts\activate    # Windows
 ```
 
-### **7️⃣ Install Dependencies**
+3. Install required packages:
+
 ```sh
 pip install -r requirements.txt
 ```
 
-### **8️⃣ Run the Script**
+---
+
+## **9. Run the Script**
+Execute the script:
+
 ```sh
 python3 stave-fetcher.py
 ```
 
 ---
 
-## 🎯 Troubleshooting
-- If something doesn’t work as expected, **double-check** the steps above.
-- Ensure the **client_email** has been added as an **Editor** to the Google Sheet.
-- Confirm that the **Google API key** is correctly placed in `credentials.json`.
-- Make sure the **virtual environment** is activated before running the script.
+## **10. Troubleshooting**
+If you face any issues, check the following:
+- Ensure **`credentials.json`** is in the correct folder.
+- The **Google Sheet name** in `stave-fetcher.py` matches exactly.
+- The **client email** has **editor** access to the sheet.
+- Your **virtual environment** is activated before running the script.
 
-🚀 **If you encounter any issues, contact [Your Name] for assistance.**
+✅ **Setup Complete!** 🎉
 
