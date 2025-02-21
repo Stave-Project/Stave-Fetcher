@@ -8,6 +8,9 @@ Data/
 # Ignore Python virtual environment (if needed)
 venv/
 
+#ignore last_timestamp.txt
+last_timestamp.txt/
+
 # Ignore __pycache__ and compiled Python files
 __pycache__/
 *.pyc
