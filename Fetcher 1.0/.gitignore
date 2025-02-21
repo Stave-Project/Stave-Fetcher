@@ -1,0 +1,14 @@
+# Ignore Google API credentials
+credentials.json
+
+# Ignore the Data directory where images & logs are stored
+Stave-Fetcher/Data/
+
+# Ignore Python virtual environment (if needed)
+venv/
+
+# Ignore __pycache__ and compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+Data/
