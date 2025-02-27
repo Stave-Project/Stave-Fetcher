@@ -3,17 +3,19 @@ import csv
 import requests
 import gspread
 import re
+import pillow_heif
+from PIL import Image
 from oauth2client.service_account import ServiceAccountCredentials
 
 # Define paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Fetcher 1.0 directory
-STAVE_FETCHER_DIR = os.path.dirname(BASE_DIR)  # Stave-Fetcher directory
-DATA_DIR = os.path.join(STAVE_FETCHER_DIR, "Data")
-LAST_TIMESTAMP_FILE = os.path.join(STAVE_FETCHER_DIR, "last_timestamp.txt")  # Now in Stave-Fetcher
+STAVE_FETCHER_DIR = os.path.dirname(os.path.abspath(__file__))  # Stave-Fetcher directory
+DATA_DIR = os.path.join(STAVE_FETCHER_DIR, "Data")  # Keep Data directory inside Stave-Fetcher
+LAST_TIMESTAMP_FILE = os.path.join(STAVE_FETCHER_DIR, "last_timestamp.txt")  # Store timestamp inside Stave-Fetcher
 CREDENTIALS_PATH = os.path.join(os.path.dirname(STAVE_FETCHER_DIR), "credentials.json")  # Stave-Project root
+
 SHEET_NAME = "Copy of Independent Stave Company Data Collection (Responses)"  # Update with actual name
 
-# Ensure the data directory exists
+# Ensure the data directory exists inside Stave-Fetcher
 os.makedirs(DATA_DIR, exist_ok=True)
 
 def authenticate_google_sheets(credentials_path, sheet_name):
@@ -76,22 +78,44 @@ def sanitize_filename(filename):
     """Sanitize filename by replacing invalid characters."""
     return re.sub(r'[\/:*?"<>|]', '-', filename)  # Replace / and other special chars
 
+def convert_heif_to_jpeg(file_path):
+    """Convert HEIF/HEIC images to JPEG if needed."""
+    try:
+        heif_file = pillow_heif.open_heif(file_path)
+        img = heif_file.to_pil()
+        jpg_path = file_path.rsplit(".", 1)[0] + ".jpg"
+        img.save(jpg_path, "JPEG", quality=95)
+        os.remove(file_path)  # Delete the original HEIF file
+        print(f"✅ Converted HEIF → JPEG: {jpg_path}")
+        return jpg_path
+    except Exception as e:
+        print(f"❌ HEIF conversion failed: {file_path} | Error: {e}")
+        return None
+
 def download_image(image_url, save_path):
     """Download image from a given URL and save it locally."""
     try:
-        response = requests.get(image_url, stream=True)
+        response = requests.get(image_url, stream=True, timeout=10)
         if response.status_code == 200:
-            # Ensure the directory exists before saving
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
             with open(save_path, 'wb') as file:
                 for chunk in response.iter_content(1024):
                     file.write(chunk)
             print(f"✅ Downloaded: {save_path}")
+
+            # Check if the image is HEIF and convert it
+            if save_path.lower().endswith((".heic", ".heif")):
+                converted_path = convert_heif_to_jpeg(save_path)
+                return converted_path if converted_path else save_path  # Return the new JPEG path if conversion succeeded
+
+            return save_path
         else:
-            print(f"❌ Failed to download {image_url}: {response.status_code}")
+            print(f"❌ Failed to download {image_url}: HTTP {response.status_code}")
+            return None
+    except requests.exceptions.Timeout:
+        print(f"⚠️ Timeout error: Skipping {image_url}")
     except Exception as e:
         print(f"⚠️ Error downloading {image_url}: {e}")
+    return None
 
 def main():
     """Main function to fetch new data and download images."""
@@ -119,8 +143,9 @@ def main():
             filename = f"{safe_timestamp}_{stave_count}.jpg"
             save_path = os.path.join(DATA_DIR, filename)
 
-            download_image(image_url, save_path)
-            writer.writerow([timestamp, filename, stave_count])
+            saved_image = download_image(image_url, save_path)
+            if saved_image:  # Log only successfully downloaded images
+                writer.writerow([timestamp, os.path.basename(saved_image), stave_count])
 
             latest_timestamp = timestamp  # Update latest timestamp
 
