@@ -3,6 +3,7 @@ import requests
 import gspread
 import re
 import logging
+import time
 from urllib.parse import urlparse
 from oauth2client.service_account import ServiceAccountCredentials
 import pillow_heif
@@ -17,9 +18,12 @@ register_heif_opener()
 STAVE_FETCHER_DIR = os.path.dirname(os.path.abspath(__file__))  # Directory of this script
 DATA_DIR = os.path.join(STAVE_FETCHER_DIR, "Data")              # Main data folder
 LAST_TIMESTAMP_FILE = os.path.join(STAVE_FETCHER_DIR, "last_timestamp.txt")
+LAST_DOWNLOADED_FILE = os.path.join(STAVE_FETCHER_DIR, "last_downloaded.txt")
+FAILED_DOWNLOADS_FILE = os.path.join(STAVE_FETCHER_DIR, "failed_downloads.txt")
 CREDENTIALS_PATH = "/Users/boncui/Desktop/Projects/Stave Project/Stave-Fetcher/credentials.json"
 
 SHEET_NAME = "Copy of Independent Stave Company Data Collection (Responses)"
+MAX_RETRIES = 5  # Maximum retry attempts for failed downloads
 
 # Ensure the Data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -71,6 +75,26 @@ def sanitize_filename(filename):
     return re.sub(r'[\\/:*?"<>|]', '-', filename)
 
 
+def save_last_successful_download(file_name):
+    """Ensure the last saved filename is always stored as JPG (not HEIC)."""
+    normalized_name = file_name.rsplit('.', 1)[0] + ".jpg"  # Convert to JPG
+    with open(LAST_DOWNLOADED_FILE, "w") as f:
+        f.write(normalized_name)
+
+def get_last_successful_download():
+    """Retrieve the last successfully processed file from last_downloaded.txt."""
+    if os.path.exists(LAST_DOWNLOADED_FILE):
+        with open(LAST_DOWNLOADED_FILE, "r") as f:
+            return f.read().strip()  # Read and return the last successful download
+    return None  # Return None if no record exists
+
+
+def log_failed_download(image_url):
+    """Log failed downloads to a separate file."""
+    with open(FAILED_DOWNLOADS_FILE, "a") as f:
+        f.write(image_url + "\n")
+
+
 def download_image(image_url, stave_count):
     """Download image from Google Drive and save with correct filename."""
     try:
@@ -85,7 +109,7 @@ def download_image(image_url, stave_count):
 
         file_name = metadata_response.json().get("name", "UnknownFile")
         file_ext = get_file_extension(file_name)
-        file_name = sanitize_filename(file_name)  
+        file_name = sanitize_filename(file_name)
         save_path = os.path.join(DATA_DIR, f"{file_name}_{stave_count}.{file_ext}")
 
         response = requests.get(image_url, stream=True, timeout=10)
@@ -99,7 +123,7 @@ def download_image(image_url, stave_count):
 
         else:
             logging.error(f"❌ Download failed with status {response.status_code}: {image_url}")
-    
+
     except Exception as e:
         logging.error(f"❌ Download failed: {image_url} | {e}")
 
@@ -113,28 +137,26 @@ def convert_heic_to_jpg(heic_path):
         image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride)
         jpg_path = heic_path.rsplit('.', 1)[0] + ".jpg"
         image.save(jpg_path, "JPEG")
-        os.remove(heic_path)  
+        os.remove(heic_path)
         print(f"✅ Converted HEIC -> JPG: {jpg_path}")
-        return jpg_path  
+        return jpg_path
     except Exception as e:
         logging.error(f"❌ HEIC to JPG conversion failed: {heic_path} | {e}")
-        return heic_path  
+        return heic_path
 
 def fetch_sheet_data(sheet, last_timestamp):
     all_rows = sheet.get_all_records()
 
-    # Debug print: Show column headers and first few rows
-    print("\nDEBUG: Detected column headers ->", sheet.row_values(1))  
-    print("DEBUG: Raw data from sheet ->", all_rows[:5])  # Print first 5 rows
+    print("\nDEBUG: Detected column headers ->", sheet.row_values(1))
+    print("DEBUG: Raw data from sheet ->", all_rows[:5])
 
     extracted_data = []
-    
+
     for row in all_rows:
         timestamp = str(row.get("Timestamp", "")).strip()
         image_url = str(row.get("Upload Stave Pallet Photo", "")).strip()
         stave_count = str(row.get("Enter Stave Count", "")).strip()
 
-        # Debug print: Show each row's extracted values
         print(f"DEBUG: Processing row -> Timestamp: {timestamp}, URL: {image_url}, Stave Count: {stave_count}")
 
         image_url = convert_drive_link(image_url)
@@ -146,39 +168,50 @@ def fetch_sheet_data(sheet, last_timestamp):
         if timestamp and image_url and stave_count:
             extracted_data.append((timestamp, image_url, stave_count))
 
-    # Debug print: Confirm how many rows were extracted
     print(f"DEBUG: Extracted {len(extracted_data)} new images for processing.\n")
-
     extracted_data.sort(key=lambda x: x[0])
     return extracted_data
 
-
-
 def process_images():
     sheet = authenticate_google_sheets(CREDENTIALS_PATH, SHEET_NAME)
-    last_timestamp = None
-    if os.path.exists(LAST_TIMESTAMP_FILE):
-        with open(LAST_TIMESTAMP_FILE, "r") as f:
-            last_timestamp = f.read().strip()
+    last_downloaded = get_last_successful_download()
 
-    new_data = fetch_sheet_data(sheet, last_timestamp)
+    new_data = fetch_sheet_data(sheet, None)
     if not new_data:
         logging.info("✅ No new images to download.")
         return
 
+    start_processing = False if last_downloaded else True
+
     for timestamp, image_url, stave_count in new_data:
-        downloaded_file = download_image(image_url, stave_count)
+        retry_attempts = 0
+        file_name = f"{sanitize_filename(image_url.split('id=')[-1])}_{stave_count}.jpg"
+
+        if last_downloaded and file_name == last_downloaded:
+            start_processing = True  # Begin processing after this file
+
+        if not start_processing:
+            print(f"⏩ Skipping already processed file: {file_name}")
+            continue
+
+        while retry_attempts < MAX_RETRIES:
+            downloaded_file = download_image(image_url, stave_count)
+            if downloaded_file:
+                break  # Exit loop if download succeeds
+            print(f"🔄 Retrying failed download: {file_name} (Attempt {retry_attempts+1}/{MAX_RETRIES})")
+            retry_attempts += 1
+            time.sleep(30)  # Wait 30 seconds before retrying
+
         if downloaded_file and get_file_extension(downloaded_file) in ["heic", "heif"]:
             downloaded_file = convert_heic_to_jpg(downloaded_file)
 
-        last_timestamp = timestamp  
-
-    if last_timestamp:
-        with open(LAST_TIMESTAMP_FILE, "w") as f:
-            f.write(last_timestamp)
+        if downloaded_file:
+            save_last_successful_download(file_name)  # Save only if successfully processed
+        else:
+            log_failed_download(image_url)  # Log failed file
 
     logging.info("✅ Image processing completed.")
 
+
 if __name__ == "__main__":
     process_images()
-
